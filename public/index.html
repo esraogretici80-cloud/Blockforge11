@@ -12,7 +12,7 @@ h1{font-size:clamp(32px,5vw,54px);margin:20px 0 8px}p{color:#aeb4c9;line-height:
 <main><p class="cyan">DESCRIBE IT · PLAN IT · BUILD IT</p><h1>Minecraft yapını <span class="cyan">AI ile tasarla.</span></h1><p>Türkçe tarifini blok planına dönüştür, 3D önizlemede incele ve yapı fonksiyonunu indir.</p>
 <div class="layout"><section class="panel"><h2>✦ Yapı oluşturucu</h2>
 <div class="field"><label for="apiKey">Kendi Google Gemini API anahtarın</label><input id="apiKey" type="password" autocomplete="off" placeholder="Gemini API anahtarını yapıştır" spellcheck="false"><p class="foot">Anahtar yalnızca bu açık sayfanın belleğinde tutulur; sunucumuza gönderilmez ve tarayıcıya kaydedilmez. Sayfayı yenilersen tekrar girmen gerekir.</p><div class="actions"><button id="testKey" class="secondary">Bağlantıyı test et</button><button id="clearKey" class="secondary">Anahtarı temizle</button></div><div id="keyStatus" class="status">Önce kendi API anahtarını gir.</div></div>
-<div class="field"><label for="model">AI modeli</label><select id="model" style="width:100%;padding:12px;border-radius:9px;border:1px solid #3b3e52;background:#080910;color:white;font:inherit"><option value="gemini-2.5-flash">Gemini 2.5 Flash (önerilen)</option><option value="gemini-2.0-flash">Gemini 2.0 Flash</option></select></div>
+<div class="field"><label for="model">AI modeli</label><select id="model" style="width:100%;padding:12px;border-radius:9px;border:1px solid #3b3e52;background:#080910;color:white;font:inherit"><option value="gemini-3.8-flash">Gemini 3.8 Flash (önerilen)</option></select></div>
 <div class="field"><label for="prompt">Nasıl bir yapı istiyorsun?</label><textarea id="prompt">Dağın altına gizli girişli, ışıklı bir yeraltı sığınağı yap.</textarea></div>
 <div class="field"><label for="seed">Dünya seed'i (yalnızca referans)</label><input id="seed" placeholder="Seed gir (isteğe bağlı)"></div>
 <div class="field"><label>Başlangıç koordinatı</label><div class="coords"><input id="ox" type="number" value="0" aria-label="X"><input id="oy" type="number" value="64" aria-label="Y"><input id="oz" type="number" value="0" aria-label="Z"></div></div>
@@ -39,15 +39,17 @@ async function geminiRequest(prompt,seed,origin,testOnly=false){
 {"title":"...","summary":"...","blocks":[{"x":0,"y":0,"z":0,"block":"stone"}],"rooms":["..."],"materials":[{"block":"stone","count":10}]}
 Generate a coherent structure from the user's Turkish request. Coordinates relative to origin: x,z -16..16; y -8..20. Maximum 900 unique blocks. Use common vanilla Bedrock block IDs only, no commands or entities. Keep walkways and rooms navigable. For underground bases, include a surface entrance and below-ground rooms. Do not claim to inspect terrain from the seed. Avoid world-wide destructive actions.`;
  const userPrompt=testOnly?'Reply with the single word OK.':`Prompt: ${prompt}\nSeed: ${String(seed||'not specified').slice(0,100)} (reference only; terrain is not inspected)\nOrigin: ${JSON.stringify(origin)}`;
+ const body={model,system_instruction:system,input:userPrompt,generation_config:{max_output_tokens:testOnly?20:8000}};
+ if(!testOnly)body.response_format={type:'text',mime_type:'application/json',schema:{type:'object',properties:{title:{type:'string'},summary:{type:'string'},blocks:{type:'array',items:{type:'object',properties:{x:{type:'integer'},y:{type:'integer'},z:{type:'integer'},block:{type:'string'}},required:['x','y','z','block']}},rooms:{type:'array',items:{type:'string'}},materials:{type:'array',items:{type:'object',properties:{block:{type:'string'},count:{type:'integer'}},required:['block','count']}}},required:['title','summary','blocks','rooms','materials']}};
  let response;
  try{
-  response=await fetch('https://generativelanguage.googleapis.com/v1beta/models/'+encodeURIComponent(model)+':generateContent?key='+encodeURIComponent(sessionApiKey),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:userPrompt}]}],generationConfig:{temperature:0.4,maxOutputTokens:testOnly?20:8000,...(testOnly?{}:{responseMimeType:'application/json'})}})});
- }catch(e){throw Error('Gemini API bağlantısı kurulamadı. İnternet bağlantısını kontrol et.');}
+  response=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':sessionApiKey},body:JSON.stringify(body)});
+ }catch(e){throw Error('Gemini Interactions API bağlantısı kurulamadı. İnternet bağlantısını kontrol et.');}
  let data;try{data=await response.json()}catch{throw Error('Gemini yanıtı okunamadı.');}
  if(!response.ok)throw Error(data?.error?.message||('Gemini API hatası: HTTP '+response.status));
- const answer=(data?.candidates?.[0]?.content?.parts||[]).map(p=>p.text||'').join('').trim();
- if(testOnly){if(!answer)throw Error('Gemini yanıt vermedi. API kotanı ve anahtarını kontrol et.');return data;}
- let plan;try{plan=JSON.parse(answer.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''))}catch{throw Error('Gemini geçerli JSON üretmedi; tekrar dene.');}
+ const answer=String(data?.output_text||data?.outputs?.map(o=>o.text||o.content?.map(c=>c.text||'').join('')||'').join('')||'').trim();
+ if(testOnly){if(!answer)throw Error('Gemini yanıt vermedi. API anahtarını ve kotanı kontrol et.');return data;}
+ let plan;try{plan=JSON.parse(answer.replace(/^```(?:json)?\\s*/i,'').replace(/\\s*```$/,''))}catch{throw Error('Gemini geçerli JSON üretmedi; tekrar dene.');}
  if(!Array.isArray(plan.blocks))throw Error('AI yanıtında blok planı bulunamadı.');
  const allowed=new Set(['stone','cobblestone','deepslate','deepslate_bricks','polished_andesite','andesite','glass','glass_pane','iron_block','iron_bars','sea_lantern','oak_planks','oak_log','oak_door','ladder','redstone_lamp','obsidian','crafting_table','chest','glowstone','quartz_block','stone_bricks','mossy_stone_bricks','smooth_stone','polished_deepslate','spruce_planks','spruce_door','barrel','furnace','blast_furnace','lantern','torch','water','air','white_concrete','gray_concrete','black_concrete','iron_door','lever','stone_button','redstone_block','bookshelf','bedrock','netherite_block','diamond_block','gold_block','emerald_block','anvil','enchanting_table','brewing_stand','end_rod']);
  const seen=new Set();
