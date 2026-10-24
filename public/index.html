@@ -11,8 +11,8 @@ h1{font-size:clamp(32px,5vw,54px);margin:20px 0 8px}p{color:#aeb4c9;line-height:
 <header><div class="logo">BLOCKFORGE<span> AI</span></div><div class="pill">BEDROCK BUILD STUDIO</div></header>
 <main><p class="cyan">DESCRIBE IT · PLAN IT · BUILD IT</p><h1>Minecraft yapını <span class="cyan">AI ile tasarla.</span></h1><p>Türkçe tarifini blok planına dönüştür, 3D önizlemede incele ve yapı fonksiyonunu indir.</p>
 <div class="layout"><section class="panel"><h2>✦ Yapı oluşturucu</h2>
-<div class="field"><label for="apiKey">Kendi Google Gemini API anahtarın</label><input id="apiKey" type="password" autocomplete="off" placeholder="Gemini API anahtarını yapıştır" spellcheck="false"><p class="foot">Anahtar yalnızca bu açık sayfanın belleğinde tutulur; sunucumuza gönderilmez ve tarayıcıya kaydedilmez. Sayfayı yenilersen tekrar girmen gerekir.</p><div class="actions"><button id="testKey" class="secondary">Bağlantıyı test et</button><button id="clearKey" class="secondary">Anahtarı temizle</button></div><div id="keyStatus" class="status">Önce kendi API anahtarını gir.</div></div>
-<div class="field"><label for="model">AI modeli</label><select id="model" style="width:100%;padding:12px;border-radius:9px;border:1px solid #3b3e52;background:#080910;color:white;font:inherit"><option value="gemini-3.8-flash">Gemini 3.8 Flash (önerilen)</option></select></div>
+<div class="field"><label for="apiKey">Kendi OpenRouter API anahtarın</label><input id="apiKey" type="password" autocomplete="off" placeholder="OpenRouter anahtarını yapıştır (sk-or-...)" spellcheck="false"><p class="foot">Anahtar yalnızca bu açık sayfanın belleğinde tutulur; sunucumuza gönderilmez ve tarayıcıya kaydedilmez. Sayfayı yenilersen tekrar girmen gerekir.</p><div class="actions"><button id="testKey" class="secondary">Bağlantıyı test et</button><button id="clearKey" class="secondary">Anahtarı temizle</button></div><div id="keyStatus" class="status">Önce kendi API anahtarını gir.</div></div>
+<div class="field"><label for="model">AI modeli</label><select id="model" style="width:100%;padding:12px;border-radius:9px;border:1px solid #3b3e52;background:#080910;color:white;font:inherit"><option value="openrouter/free">OpenRouter Free — otomatik güncel ücretsiz model</option></select></div>
 <div class="field"><label for="prompt">Nasıl bir yapı istiyorsun?</label><textarea id="prompt">Dağın altına gizli girişli, ışıklı bir yeraltı sığınağı yap.</textarea></div>
 <div class="field"><label for="seed">Dünya seed'i (yalnızca referans)</label><input id="seed" placeholder="Seed gir (isteğe bağlı)"></div>
 <div class="field"><label>Başlangıç koordinatı</label><div class="coords"><input id="ox" type="number" value="0" aria-label="X"><input id="oy" type="number" value="64" aria-label="Y"><input id="oz" type="number" value="0" aria-label="Z"></div></div>
@@ -20,7 +20,7 @@ h1{font-size:clamp(32px,5vw,54px);margin:20px 0 8px}p{color:#aeb4c9;line-height:
 <div class="actions"><button id="fn" class="secondary" disabled>.mcfunction indir</button><button id="json" class="secondary" disabled>JSON indir</button></div>
 <p class="foot warning">Not: Seed araziyi analiz etmez. .mcfunction dosyası tek başına bir .mcworld değildir.</p></section>
 <section class="panel"><h2>◈ 3D önizleme</h2><div id="preview"></div><div class="stats"><div class="stat"><small>ÜRETİLEN BLOKLAR</small><strong id="count">0</strong></div><div class="stat"><small>YAPI ADI</small><strong id="title">Henüz yok</strong></div></div><h3>Malzemeler</h3><div id="materials" class="materials"><span class="tag">Henüz oluşturulmadı</span></div><p id="summary" class="foot"></p></section></div>
-<p class="foot">API anahtarı yalnızca bu sayfa açıkken bellekte tutulur; hiçbir yere kaydedilmez. Gemini API kullanımında kota ve ücret koşulları geçerli olabilir. Gerçek .mcworld dışa aktarma ayrıca geliştirilmelidir.</p></main>
+<p class="foot">API anahtarı yalnızca bu sayfa açıkken bellekte tutulur; hiçbir yere kaydedilmez. OpenRouter ücretsiz modellerinde kota ve hız sınırları olabilir. Gerçek .mcworld dışa aktarma ayrıca geliştirilmelidir.</p></main>
 <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
 <script>
 const $=id=>document.getElementById(id);let plan=null,renderer,scene,camera,group,drag=false,lx=0,ly=0;
@@ -32,39 +32,59 @@ let sessionApiKey='';
 function keyStatus(s,type=''){ $('keyStatus').textContent=s;$('keyStatus').className='status '+type; }
 $('apiKey').addEventListener('input',e=>{sessionApiKey=e.target.value.trim();keyStatus(sessionApiKey?'Anahtar bu sayfanın belleğinde hazır. Bağlantıyı test edebilirsin.':'Önce kendi API anahtarını gir.');});
 $('clearKey').onclick=()=>{$('apiKey').value='';sessionApiKey='';keyStatus('Anahtar temizlendi.','ok');};
-async function geminiRequest(prompt,seed,origin,testOnly=false){
- if(!sessionApiKey)throw Error('Önce kendi Gemini API anahtarını gir.');
- const model=$('model').value;
+async function openRouterRequest(prompt,seed,origin,testOnly=false){
+ if(!sessionApiKey)throw Error('Önce kendi OpenRouter API anahtarını gir.');
+ const model=$('model').value||'openrouter/free';
  const system=`You are BlockForge, a Minecraft Bedrock build planner. Return only valid JSON with this schema:
 {"title":"...","summary":"...","blocks":[{"x":0,"y":0,"z":0,"block":"stone"}],"rooms":["..."],"materials":[{"block":"stone","count":10}]}
 Generate a coherent structure from the user's Turkish request. Coordinates relative to origin: x,z -16..16; y -8..20. Maximum 900 unique blocks. Use common vanilla Bedrock block IDs only, no commands or entities. Keep walkways and rooms navigable. For underground bases, include a surface entrance and below-ground rooms. Do not claim to inspect terrain from the seed. Avoid world-wide destructive actions.`;
  const userPrompt=testOnly?'Reply with the single word OK.':`Prompt: ${prompt}\nSeed: ${String(seed||'not specified').slice(0,100)} (reference only; terrain is not inspected)\nOrigin: ${JSON.stringify(origin)}`;
- const body={model,system_instruction:system,input:userPrompt,generation_config:{max_output_tokens:testOnly?20:8000}};
- if(!testOnly)body.response_format={type:'text',mime_type:'application/json',schema:{type:'object',properties:{title:{type:'string'},summary:{type:'string'},blocks:{type:'array',items:{type:'object',properties:{x:{type:'integer'},y:{type:'integer'},z:{type:'integer'},block:{type:'string'}},required:['x','y','z','block']}},rooms:{type:'array',items:{type:'string'}},materials:{type:'array',items:{type:'object',properties:{block:{type:'string'},count:{type:'integer'}},required:['block','count']}}},required:['title','summary','blocks','rooms','materials']}};
+ const body={model,messages:[{role:'system',content:system},{role:'user',content:userPrompt}],max_tokens:testOnly?30:8000};
+ if(!testOnly)body.response_format={type:'json_object'};
  let response;
  try{
-  response=await fetch('https://generativelanguage.googleapis.com/v1beta/interactions',{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':sessionApiKey},body:JSON.stringify(body)});
- }catch(e){throw Error('Gemini Interactions API bağlantısı kurulamadı. İnternet bağlantısını kontrol et.');}
- let data;try{data=await response.json()}catch{throw Error('Gemini yanıtı okunamadı.');}
- if(!response.ok)throw Error(data?.error?.message||('Gemini API hatası: HTTP '+response.status));
- const answer=String(data?.output_text||data?.outputs?.map(o=>o.text||o.content?.map(c=>c.text||'').join('')||'').join('')||'').trim();
- if(testOnly){if(!answer)throw Error('Gemini yanıt vermedi. API anahtarını ve kotanı kontrol et.');return data;}
- let plan;try{plan=JSON.parse(answer.replace(/^```(?:json)?\\s*/i,'').replace(/\\s*```$/,''))}catch{throw Error('Gemini geçerli JSON üretmedi; tekrar dene.');}
- if(!Array.isArray(plan.blocks))throw Error('AI yanıtında blok planı bulunamadı.');
+  response=await fetch('https://openrouter.ai/api/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json','Authorization':'Bearer '+sessionApiKey,'X-Title':'BlockForge AI'},body:JSON.stringify(body)});
+ }catch(e){throw Error('OpenRouter bağlantısı kurulamadı. İnternet bağlantısını kontrol et.');}
+ let data;try{data=await response.json()}catch{throw Error('OpenRouter yanıtı okunamadı.');}
+ if(!response.ok)throw Error(data?.error?.message||('OpenRouter API hatası: HTTP '+response.status));
+ let raw=data?.choices?.[0]?.message?.content;
+ const answer=(Array.isArray(raw)?raw.map(x=>x.text||'').join(''):String(raw||'')).trim();
+ if(testOnly){if(!answer)throw Error('OpenRouter yanıt vermedi. API anahtarını, kotanı ve model erişimini kontrol et.');return data;}
+ let result;try{result=JSON.parse(answer.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,''))}catch{throw Error('Model geçerli JSON üretmedi; başka ücretsiz model seçip tekrar dene.');}
+ if(!Array.isArray(result.blocks))throw Error('AI yanıtında blok planı bulunamadı.');
  const allowed=new Set(['stone','cobblestone','deepslate','deepslate_bricks','polished_andesite','andesite','glass','glass_pane','iron_block','iron_bars','sea_lantern','oak_planks','oak_log','oak_door','ladder','redstone_lamp','obsidian','crafting_table','chest','glowstone','quartz_block','stone_bricks','mossy_stone_bricks','smooth_stone','polished_deepslate','spruce_planks','spruce_door','barrel','furnace','blast_furnace','lantern','torch','water','air','white_concrete','gray_concrete','black_concrete','iron_door','lever','stone_button','redstone_block','bookshelf','bedrock','netherite_block','diamond_block','gold_block','emerald_block','anvil','enchanting_table','brewing_stand','end_rod']);
  const seen=new Set();
- plan.blocks=plan.blocks.slice(0,900).filter(b=>{
+ result.blocks=result.blocks.slice(0,900).filter(b=>{
   b.x=clampNum(b.x,0,-16,16);b.y=clampNum(b.y,0,-8,20);b.z=clampNum(b.z,0,-16,16);
   let id=String(b.block||'stone').toLowerCase().replace(/^minecraft:/,'').replace(/[^a-z0-9_]/g,'');
   if(!allowed.has(id))id='stone';b.block='minecraft:'+id;
   const k=`${b.x},${b.y},${b.z}`;if(seen.has(k))return false;seen.add(k);return true;
  });
- if(!plan.blocks.length)throw Error('AI boş bir blok planı döndürdü.');
- return {title:String(plan.title||'AI Yapısı').slice(0,80),summary:String(plan.summary||''),blocks:plan.blocks,rooms:Array.isArray(plan.rooms)?plan.rooms.slice(0,12):[],materials:Array.isArray(plan.materials)?plan.materials.slice(0,30):[],origin,seed:String(seed||'').slice(0,100)};
+ if(!result.blocks.length)throw Error('AI boş bir blok planı döndürdü.');
+ return {title:String(result.title||'AI Yapısı').slice(0,80),summary:String(result.summary||''),blocks:result.blocks,rooms:Array.isArray(result.rooms)?result.rooms.slice(0,12):[],materials:Array.isArray(result.materials)?result.materials.slice(0,30):[],origin,seed:String(seed||'').slice(0,100),model};
 }
+async function loadFreeModels(){
+ const select=$('model');
+ try{
+  const r=await fetch('https://openrouter.ai/api/v1/models');
+  if(!r.ok)throw Error('model list unavailable');
+  const data=await r.json();
+  const free=(data.data||[]).filter(m=>{
+   const id=String(m.id||'');
+   const pricing=m.pricing||{};
+   const zero=v=>v!==undefined&&v!==null&&Number(v)===0;
+   return id.endsWith(':free')||(zero(pricing.prompt)&&zero(pricing.completion));
+  }).sort((a,b)=>String(a.name||a.id).localeCompare(String(b.name||b.id)));
+  for(const m of free){
+   if(!m.id||m.id==='openrouter/free')continue;
+   const opt=document.createElement('option');opt.value=m.id;opt.textContent=(m.name||m.id)+' · ücretsiz';select.appendChild(opt);
+  }
+ }catch(e){/* Automatic free router remains available if model listing is blocked. */}
+}
+loadFreeModels();
 function clampNum(v,d,min,max){const n=Number(v);return Number.isFinite(n)?Math.max(min,Math.min(max,Math.trunc(n))):d}
-$('testKey').onclick=async()=>{const t=$('testKey');t.disabled=true;t.textContent='Test ediliyor…';keyStatus('Gemini bağlantısı deneniyor…');try{await geminiRequest('', '', {}, true);keyStatus('Bağlantı başarılı! Gemini API anahtarı çalışıyor.','ok')}catch(e){keyStatus(e.message,'error')}finally{t.disabled=false;t.textContent='Bağlantıyı test et'}};
-$('build').onclick=async()=>{let prompt=$('prompt').value.trim();if(prompt.length<4){status('Lütfen daha ayrıntılı tarif yaz.','error');return}if(!sessionApiKey){status('Önce kendi Gemini API anahtarını gir.','error');$('apiKey').focus();return}let b=$('build');b.disabled=true;b.textContent='⏳ Yapı planlanıyor…';status('Gemini API ile yapı planlanıyor…');try{let origin={x:clampNum($('ox').value,0,-30000000,30000000),y:clampNum($('oy').value,64,-64,320),z:clampNum($('oz').value,0,-30000000,30000000)};let d=await geminiRequest(prompt,$('seed').value,origin);plan=d;draw(d.blocks);$('count').textContent=d.blocks.length;$('title').textContent=d.title||'AI Yapısı';$('summary').textContent=d.summary||'';$('materials').innerHTML='';(d.materials||[]).slice(0,25).forEach(m=>{let s=document.createElement('span');s.className='tag';s.textContent=(m.block||'stone').replace('minecraft:','')+' × '+m.count;$('materials').appendChild(s)});if(!$('materials').children.length)$('materials').textContent='Malzeme bilgisi yok';$('fn').disabled=false;$('json').disabled=false;status('Başarılı! '+d.blocks.length+' blokluk plan üretildi.','ok')}catch(e){status(e.message||'Bilinmeyen hata.','error')}finally{b.disabled=false;b.textContent='⚡ Dünya Yapısını Üret'}};
+$('testKey').onclick=async()=>{const t=$('testKey');t.disabled=true;t.textContent='Test ediliyor…';keyStatus('OpenRouter bağlantısı deneniyor…');try{await openRouterRequest('', '', {}, true);keyStatus('Bağlantı başarılı! OpenRouter API anahtarı çalışıyor.','ok')}catch(e){keyStatus(e.message,'error')}finally{t.disabled=false;t.textContent='Bağlantıyı test et'}};
+$('build').onclick=async()=>{let prompt=$('prompt').value.trim();if(prompt.length<4){status('Lütfen daha ayrıntılı tarif yaz.','error');return}if(!sessionApiKey){status('Önce kendi OpenRouter API anahtarını gir.','error');$('apiKey').focus();return}let b=$('build');b.disabled=true;b.textContent='⏳ Yapı planlanıyor…';status('OpenRouter üzerinden ücretsiz AI modeliyle yapı planlanıyor…');try{let origin={x:clampNum($('ox').value,0,-30000000,30000000),y:clampNum($('oy').value,64,-64,320),z:clampNum($('oz').value,0,-30000000,30000000)};let d=await openRouterRequest(prompt,$('seed').value,origin);plan=d;draw(d.blocks);$('count').textContent=d.blocks.length;$('title').textContent=d.title||'AI Yapısı';$('summary').textContent=d.summary||'';$('materials').innerHTML='';(d.materials||[]).slice(0,25).forEach(m=>{let s=document.createElement('span');s.className='tag';s.textContent=(m.block||'stone').replace('minecraft:','')+' × '+m.count;$('materials').appendChild(s)});if(!$('materials').children.length)$('materials').textContent='Malzeme bilgisi yok';$('fn').disabled=false;$('json').disabled=false;status('Başarılı! '+d.blocks.length+' blokluk plan üretildi.','ok')}catch(e){status(e.message||'Bilinmeyen hata.','error')}finally{b.disabled=false;b.textContent='⚡ Dünya Yapısını Üret'}};
 function download(name,text){let a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:'text/plain;charset=utf-8'}));a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
 $('fn').onclick=()=>{if(!plan)return;let o=plan.origin||{x:0,y:64,z:0};download('blockforge_build.mcfunction',plan.blocks.map(b=>`setblock ${o.x+b.x} ${o.y+b.y} ${o.z+b.z} ${b.block}`).join('\n'))};
 $('json').onclick=()=>{if(plan)download('blockforge_build.json',JSON.stringify(plan,null,2))};
